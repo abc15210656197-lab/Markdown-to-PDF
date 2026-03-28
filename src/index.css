@@ -25,6 +25,75 @@
   border-color: #e5e7eb !important;
 }
 
+.pdf-preview-area table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+  table-layout: auto;
+  border: 1px solid #d1d5db !important;
+}
+
+.pdf-preview-area th,
+.pdf-preview-area td {
+  border: 1px solid #d1d5db !important;
+  padding: 0.75rem 1rem;
+  min-width: 150px; /* Increased min-width to prevent squeezing */
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.pdf-preview-area th {
+  background-color: #f9fafb;
+  font-weight: 700;
+  text-align: left;
+  color: #111827;
+  white-space: nowrap; /* Keep headers on one line to force width */
+}
+
+.pdf-preview-area td {
+  color: #374151;
+}
+
+/* Ensure the wrapper actually scrolls and is robust */
+.table-wrapper {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 1.5rem 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.table-wrapper table {
+  margin: 0 !important; /* Remove prose margin inside wrapper */
+  width: max-content !important; /* Allow table to be as wide as its content */
+  min-width: 100% !important; /* But at least as wide as the container */
+  max-width: none !important;
+  table-layout: auto !important; /* Ensure content determines width */
+}
+
+/* Custom scrollbar for table wrapper to make it more obvious */
+.table-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 /* Prevent awkward page breaks in PDF */
 .pdf-preview-area p, 
 .pdf-preview-area li, 
@@ -45,4 +114,37 @@
 .pdf-preview-area h3 {
   page-break-after: avoid;
   break-after: avoid;
+}
+
+.page-break {
+  page-break-before: always;
+  break-before: page;
+  height: 0;
+  margin: 0;
+  border: none;
+  visibility: hidden;
+}
+
+/* Visual indicator for page break in editor */
+.pdf-preview-area .page-break {
+  height: 2px;
+  background: repeating-linear-gradient(90deg, #e2e8f0, #e2e8f0 10px, transparent 10px, transparent 20px);
+  margin: 2rem 0;
+  visibility: visible;
+  position: relative;
+}
+
+.pdf-preview-area .page-break::after {
+  content: '分页符 (Page Break)';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 0 10px;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }

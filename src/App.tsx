@@ -14,16 +14,33 @@ import {
   FileCode,
   Bold,
   Italic,
+  Underline,
+  Strikethrough,
   List,
   ListOrdered,
   Heading1,
   Heading2,
+  Heading3,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Link as LinkIcon,
+  Minus,
+  Trash2,
+  Scissors,
   Settings2,
   Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
 import TurndownService from 'turndown';
+// @ts-ignore
+import { gfm } from 'turndown-plugin-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { marked } from 'marked';
+import markedKatex from 'marked-katex-extension';
+import 'katex/dist/katex.min.css';
 
 const DEFAULT_MARKDOWN = "";
 
@@ -32,6 +49,46 @@ const turndownService = new TurndownService({
   codeBlockStyle: 'fenced',
   hr: '---',
   bulletListMarker: '-',
+});
+
+// Use GFM plugin for tables, strikethrough, task lists
+turndownService.use(gfm);
+
+// Custom rule to handle the table wrapper div
+turndownService.addRule('tableWrapper', {
+  filter: (node) => {
+    return node.nodeName === 'DIV' && node.classList.contains('overflow-x-auto') && node.querySelector('table') !== null;
+  },
+  replacement: (content) => content
+});
+
+// Custom rule for page breaks
+turndownService.addRule('pageBreak', {
+  filter: (node) => {
+    return node.nodeName === 'DIV' && node.classList.contains('page-break');
+  },
+  replacement: () => '\n\n<div class="page-break"></div>\n\n'
+});
+
+// Custom rule to preserve LaTeX math blocks
+turndownService.addRule('math', {
+  filter: (node) => {
+    return (node.nodeName === 'SPAN' || node.nodeName === 'DIV') && 
+           (node.classList.contains('math') || node.classList.contains('katex-display') || node.classList.contains('katex'));
+  },
+  replacement: (content, node) => {
+    // Attempt to extract the original LaTeX from the annotation or text
+    const annotation = (node as HTMLElement).querySelector('annotation[encoding="application/x-tex"]');
+    if (annotation && annotation.textContent) {
+      const isBlock = (node as HTMLElement).classList.contains('math-display') || (node as HTMLElement).classList.contains('katex-display');
+      return isBlock ? `\n$$\n${annotation.textContent}\n$$\n` : `$${annotation.textContent}$`;
+    }
+    // Fallback: try to find the original source in data-value if we added it
+    const dataValue = (node as HTMLElement).getAttribute('data-value');
+    if (dataValue) return dataValue;
+    
+    return content;
+  }
 });
 
 export default function App() {
@@ -80,12 +137,27 @@ export default function App() {
             style.innerHTML = `
               :initial { --color-blue-600: #2563eb; --color-gray-900: #111827; }
               * { color-scheme: light !important; }
+              
+              /* 避免在这些元素内部发生分页，防止文字被拦腰截断 */
+              p, li, h1, h2, h3, h4, h5, h6, img, pre, blockquote, tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+              
+              /* 尽量避免标题后立即分页 */
+              h1, h2, h3, h4, h5, h6 {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+              }
             `;
             clonedDoc.head.appendChild(style);
           }
         },
         jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
-        pagebreak:    { mode: ['avoid-all', 'css'] as any }
+        pagebreak:    { 
+          mode: ['css', 'legacy'] as any,
+          avoid: ['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'pre', 'blockquote', 'tr']
+        }
       };
 
       await html2pdf().set(opt).from(element).save();
@@ -226,55 +298,65 @@ export default function App() {
   // When switching to visual mode, we need to ensure the content matches the current markdown
   useEffect(() => {
     if (isVisualMode && previewRef.current) {
-      // The content is already there from the last render of ReactMarkdown
+      // Configure marked with katex extension
+      marked.use(markedKatex({
+        throwOnError: false
+      }));
+      
+      // Convert markdown to HTML and set it as innerHTML
+      const html = marked.parse(markdown);
+      previewRef.current.innerHTML = html as string;
     }
-  }, [isVisualMode]);
+  }, [isVisualMode, markdown]);
 
   return (
     <div className="h-screen flex flex-col bg-[#F9FAFB] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200 shrink-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-            <FileText className="w-5 h-5 text-white" />
+      <header className="h-16 md:h-20 flex items-center justify-between px-4 md:px-8 bg-white border-b border-slate-200 shrink-0 z-30 sticky top-0 pt-safe">
+        {/* Left: Logo */}
+        <div className="flex items-center gap-2 md:gap-3 flex-1">
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 shrink-0">
+            <FileText className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
-          <div>
-            <h1 className="font-bold text-slate-900 leading-none">Markdown Pro</h1>
-            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">PDF Converter</p>
+          <div className="hidden min-[450px]:block">
+            <h1 className="font-bold text-slate-900 leading-none text-sm md:text-base">Markdown Pro</h1>
+            <p className="text-[9px] md:text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5 md:mt-1">PDF Converter</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-            <button
-              onClick={switchToMarkdownMode}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                !isVisualMode ? 'bg-white shadow-sm text-blue-600 ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <FileCode className="w-3.5 h-3.5" />
-              Markdown
-            </button>
-            <button
-              onClick={switchToVisualMode}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                isVisualMode ? 'bg-white shadow-sm text-blue-600 ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              可视化
-            </button>
-          </div>
+        {/* Center: Toggle */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/50 mx-2">
+          <button
+            onClick={switchToMarkdownMode}
+            className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-lg text-[10px] md:text-xs font-semibold transition-all duration-200 ${
+              !isVisualMode ? 'bg-white shadow-sm text-blue-600 ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <FileCode className="w-3 h-3 md:w-3.5 md:h-3.5" />
+            <span className={isVisualMode ? 'hidden sm:inline' : 'inline'}>Markdown</span>
+          </button>
+          <button
+            onClick={switchToVisualMode}
+            className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-lg text-[10px] md:text-xs font-semibold transition-all duration-200 ${
+              isVisualMode ? 'bg-white shadow-sm text-blue-600 ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 md:w-3.5 md:h-3.5" />
+            <span className={!isVisualMode ? 'hidden sm:inline' : 'inline'}>可视化</span>
+          </button>
+        </div>
 
+        {/* Right: Export */}
+        <div className="flex justify-end flex-1">
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               disabled={isGenerating}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold shadow-xl shadow-slate-200"
+              className="flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-[11px] md:text-sm font-bold shadow-xl shadow-slate-200"
             >
-              <Download className="w-4 h-4" />
-              {isGenerating ? '生成中...' : '导出'}
-              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${showExportMenu ? 'rotate-180' : ''}`} />
+              <Download className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <span className="hidden min-[400px]:inline">{isGenerating ? '生成中...' : '导出'}</span>
+              <ChevronDown className={`w-3.5 h-3.5 md:w-4 md:h-4 transition-transform duration-300 ${showExportMenu ? 'rotate-180' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -343,6 +425,18 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
+                    onClick={() => {
+                      if (confirm('确定要清空所有内容吗？')) {
+                        setMarkdown('');
+                      }
+                    }}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-90"
+                    title="清空内容"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="w-px h-4 bg-slate-200 mx-1" />
+                  <button
                     onClick={handleCopy}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all flex items-center gap-2 active:scale-90"
                     title="复制 Markdown"
@@ -395,18 +489,6 @@ export default function App() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  {isVisualMode && (
-                    <div className="flex items-center gap-0.5 bg-slate-50 p-1 rounded-lg border border-slate-200/50">
-                      <button onClick={() => execCommand('bold')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="加粗"><Bold className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => execCommand('italic')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="斜体"><Italic className="w-3.5 h-3.5" /></button>
-                      <div className="w-px h-3 bg-slate-200 mx-1" />
-                      <button onClick={() => execCommand('formatBlock', 'h1')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="一级标题"><Heading1 className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => execCommand('formatBlock', 'h2')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="二级标题"><Heading2 className="w-3.5 h-3.5" /></button>
-                      <div className="w-px h-3 bg-slate-200 mx-1" />
-                      <button onClick={() => execCommand('insertUnorderedList')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="无序列表"><List className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => execCommand('insertOrderedList')} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all active:scale-90" title="有序列表"><ListOrdered className="w-3.5 h-3.5" /></button>
-                    </div>
-                  )}
                   <button
                     onClick={togglePreviewFullscreen}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all active:scale-90"
@@ -416,12 +498,70 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-4 md:p-12 flex justify-center scroll-smooth">
+
+              {isVisualMode && (
+                <div className="flex flex-wrap items-center gap-1 p-2 bg-slate-50 border-b border-slate-200 overflow-x-auto no-scrollbar">
+                  <div className="flex items-center gap-0.5 bg-white p-1 rounded-lg border border-slate-200/50 shadow-sm">
+                    <button onClick={() => execCommand('bold')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="加粗"><Bold className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('italic')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="斜体"><Italic className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('underline')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="下划线"><Underline className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('strikeThrough')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="删除线"><Strikethrough className="w-3.5 h-3.5" /></button>
+                  </div>
+                  
+                  <div className="flex items-center gap-0.5 bg-white p-1 rounded-lg border border-slate-200/50 shadow-sm">
+                    <button onClick={() => execCommand('formatBlock', 'h1')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90 font-bold text-[10px]" title="H1">H1</button>
+                    <button onClick={() => execCommand('formatBlock', 'h2')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90 font-bold text-[10px]" title="H2">H2</button>
+                    <button onClick={() => execCommand('formatBlock', 'h3')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90 font-bold text-[10px]" title="H3">H3</button>
+                  </div>
+
+                  <div className="flex items-center gap-0.5 bg-white p-1 rounded-lg border border-slate-200/50 shadow-sm">
+                    <button onClick={() => execCommand('insertUnorderedList')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="无序列表"><List className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('insertOrderedList')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="有序列表"><ListOrdered className="w-3.5 h-3.5" /></button>
+                  </div>
+
+                  <div className="flex items-center gap-0.5 bg-white p-1 rounded-lg border border-slate-200/50 shadow-sm">
+                    <button onClick={() => execCommand('justifyLeft')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="左对齐"><AlignLeft className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('justifyCenter')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="居中"><AlignCenter className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('justifyRight')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="右对齐"><AlignRight className="w-3.5 h-3.5" /></button>
+                  </div>
+
+                  <div className="flex items-center gap-0.5 bg-white p-1 rounded-lg border border-slate-200/50 shadow-sm">
+                    <button onClick={() => {
+                      const url = prompt('输入链接地址:', 'https://');
+                      if (url) execCommand('createLink', url);
+                    }} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="链接"><LinkIcon className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => {
+                      const rows = prompt('输入行数:', '3');
+                      const cols = prompt('输入列数:', '3');
+                      if (rows && cols) {
+                        let tableHtml = '<table border="1"><thead><tr>';
+                        for (let i = 0; i < parseInt(cols); i++) tableHtml += '<th>表头</th>';
+                        tableHtml += '</tr></thead><tbody>';
+                        for (let i = 0; i < parseInt(rows); i++) {
+                          tableHtml += '<tr>';
+                          for (let j = 0; j < parseInt(cols); j++) tableHtml += '<td>单元格</td>';
+                          tableHtml += '</tr>';
+                        }
+                        tableHtml += '</tbody></table>';
+                        execCommand('insertHTML', tableHtml);
+                      }
+                    }} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="插入表格"><Settings2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => {
+                      const formula = prompt('输入 LaTeX 公式:', 'E=mc^2');
+                      if (formula) {
+                        execCommand('insertHTML', `$${formula}$`);
+                      }
+                    }} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="插入公式"><Sparkles className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('insertHTML', '<div class="page-break"></div>')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="插入分页符"><Scissors className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => execCommand('insertHorizontalRule')} className="p-1.5 hover:bg-slate-50 rounded-md text-slate-600 transition-all active:scale-90" title="分割线"><Minus className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 overflow-auto p-4 md:p-12 flex justify-start md:justify-center scroll-smooth">
                 {/* PDF Page Container */}
                 <motion.div 
                   layout
-                  className="bg-white shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] w-full max-w-[210mm] min-h-[297mm] shrink-0 p-12 md:p-20 relative rounded-sm"
+                  className="bg-white shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] w-full max-w-[210mm] min-h-[297mm] shrink-0 p-6 md:p-20 relative rounded-sm overflow-x-auto"
                 >
                   {/* Content to be captured / edited */}
                   <div 
@@ -432,7 +572,23 @@ export default function App() {
                     suppressContentEditableWarning={true}
                   >
                     {!isVisualMode ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={{
+                          table: ({node, ...props}) => (
+                            <div className="table-wrapper my-6 border border-slate-200 rounded-lg shadow-sm overflow-x-auto">
+                              <table className="min-w-full w-max border-collapse table-auto" {...props} />
+                            </div>
+                          ),
+                          th: ({node, ...props}) => (
+                            <th className="px-4 py-3 bg-slate-50 text-left text-sm font-semibold text-slate-900 border border-slate-200" {...props} />
+                          ),
+                          td: ({node, ...props}) => (
+                            <td className="px-4 py-3 text-sm text-slate-600 border border-slate-200" {...props} />
+                          )
+                        }}
+                      >
                         {markdown}
                       </ReactMarkdown>
                     ) : null}
