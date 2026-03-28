@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Fix for html2canvas not supporting oklch color function in Tailwind v4 */
+.pdf-preview-area {
+  --tw-prose-body: #374151;
+  --tw-prose-headings: #111827;
+  --tw-prose-lead: #4b5563;
+  --tw-prose-links: #2563eb;
+  --tw-prose-bold: #111827;
+  --tw-prose-counters: #6b7280;
+  --tw-prose-bullets: #d1d5db;
+  --tw-prose-hr: #e5e7eb;
+  --tw-prose-quotes: #111827;
+  --tw-prose-quote-borders: #e5e7eb;
+  --tw-prose-captions: #6b7280;
+  --tw-prose-code: #111827;
+  --tw-prose-pre-code: #e5e7eb;
+  --tw-prose-pre-bg: #1f2937;
+  --tw-prose-th-borders: #d1d5db;
+  --tw-prose-td-borders: #e5e7eb;
+}
+
+.pdf-preview-area * {
+  border-color: #e5e7eb !important;
+}
+
+/* Prevent awkward page breaks in PDF */
+.pdf-preview-area p, 
+.pdf-preview-area li, 
+.pdf-preview-area h1, 
+.pdf-preview-area h2, 
+.pdf-preview-area h3, 
+.pdf-preview-area h4, 
+.pdf-preview-area blockquote, 
+.pdf-preview-area pre,
+.pdf-preview-area table,
+.pdf-preview-area tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.pdf-preview-area h1, 
+.pdf-preview-area h2, 
+.pdf-preview-area h3 {
+  page-break-after: avoid;
+  break-after: avoid;
+}

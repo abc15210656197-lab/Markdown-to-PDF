@@ -1,0 +1,5 @@
+{
+  "name": "Markdown to PDF Converter",
+  "description": "A split-pane Markdown editor with real-time preview and PDF export functionality.",
+  "requestFramePermissions": []
+}
