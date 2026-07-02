@@ -17,7 +17,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "html-to-docx": "^1.8.0",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "katex": "^0.16.44",

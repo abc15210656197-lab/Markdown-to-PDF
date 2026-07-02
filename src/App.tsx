@@ -91,6 +91,85 @@ turndownService.addRule('math', {
   }
 });
 
+const BLOCKED_HTML_TAGS = new Set([
+  'script',
+  'iframe',
+  'object',
+  'embed',
+  'link',
+  'meta',
+  'svg',
+  'foreignobject',
+]);
+const SAFE_URI_ATTRS = new Set(['href', 'src']);
+const SAFE_HTML_ATTRS = new Set([
+  'alt',
+  'aria-label',
+  'class',
+  'colspan',
+  'encoding',
+  'height',
+  'href',
+  'rowspan',
+  'src',
+  'target',
+  'title',
+  'type',
+  'width',
+]);
+
+function isSafeHtmlUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('#')) return true;
+  if (/^data:image\//i.test(trimmed)) return true;
+  if (/^blob:/i.test(trimmed)) return true;
+
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeHtml(html: string) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+  const elements: Element[] = [];
+  while (walker.nextNode()) {
+    elements.push(walker.currentNode as Element);
+  }
+
+  for (const element of elements) {
+    const tagName = element.tagName.toLowerCase();
+    if (BLOCKED_HTML_TAGS.has(tagName)) {
+      element.remove();
+      continue;
+    }
+
+    for (const attr of Array.from(element.attributes)) {
+      const attrName = attr.name.toLowerCase();
+      const allowed =
+        SAFE_HTML_ATTRS.has(attrName) ||
+        attrName.startsWith('aria-') ||
+        attrName.startsWith('data-');
+
+      if (attrName.startsWith('on') || attrName === 'style' || !allowed) {
+        element.removeAttribute(attr.name);
+        continue;
+      }
+
+      if (SAFE_URI_ATTRS.has(attrName) && !isSafeHtmlUrl(attr.value)) {
+        element.removeAttribute(attr.name);
+      }
+    }
+  }
+
+  return template.innerHTML;
+}
+
 export default function App() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [fullscreen, setFullscreen] = useState<'none' | 'editor' | 'preview'>('none');
@@ -177,13 +256,11 @@ export default function App() {
     setIsGenerating(true);
     setShowExportMenu(false);
     try {
-      // @ts-ignore
-      const HTMLToDocx = (await import('html-to-docx')).default;
-      
       const element = previewRef.current;
+      const safeBody = sanitizeHtml(element.innerHTML);
       const htmlContent = `
         <!DOCTYPE html>
-        <html>
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
           <head>
             <meta charset="utf-8">
             <style>
@@ -198,21 +275,18 @@ export default function App() {
             </style>
           </head>
           <body>
-            ${element.innerHTML}
+            ${safeBody}
           </body>
         </html>
       `;
 
-      const docxBlob = await HTMLToDocx(htmlContent, null, {
-        table: { row: { cantSplit: true } },
-        footer: true,
-        pageNumber: true,
+      const wordBlob = new Blob(['\ufeff', htmlContent], {
+        type: 'application/msword;charset=utf-8',
       });
-
-      const url = URL.createObjectURL(docxBlob);
+      const url = URL.createObjectURL(wordBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'document.docx';
+      link.download = 'document.doc';
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -275,7 +349,8 @@ export default function App() {
 
   const syncVisualToMarkdown = () => {
     if (previewRef.current) {
-      const html = previewRef.current.innerHTML;
+      const html = sanitizeHtml(previewRef.current.innerHTML);
+      previewRef.current.innerHTML = html;
       const md = turndownService.turndown(html);
       setMarkdown(md);
     }
@@ -305,7 +380,7 @@ export default function App() {
       
       // Convert markdown to HTML and set it as innerHTML
       const html = marked.parse(markdown);
-      previewRef.current.innerHTML = html as string;
+      previewRef.current.innerHTML = sanitizeHtml(html as string);
     }
   }, [isVisualMode, markdown]);
 
@@ -383,7 +458,7 @@ export default function App() {
                     <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
                       <FileCode className="w-4 h-4 text-blue-500" />
                     </div>
-                    <span className="font-medium">导出为 Word (.docx)</span>
+                    <span className="font-medium">导出为 Word (.doc)</span>
                   </button>
                   <button
                     onClick={handleDownloadImage}
